@@ -51,7 +51,7 @@ func (s *Service) ServeHttp() error {
 	}).Methods("GET").Queries("startTime", "{startTime}").Queries("endTime", "{endTime}")
 	r.HandleFunc("/api/findSlot", func(w http.ResponseWriter, r *http.Request) {
 		s.FindSlot(w, r)
-	}).Methods("GET")
+	}).Methods("GET").Queries("startTime", "{startTime}").Queries("durationMinutes", "{durationMinutes}").Queries("logins", "{logins}")
 
 	s.Server = &http.Server{Addr: ":8080", Handler: r}
 	s.StopWg = &sync.WaitGroup{}

@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+var dateLayout = "2006-01-02T15:04:05Z07:00"
 
 func (s *Service) AddUser(w http.ResponseWriter, r *http.Request) {
 	coll := s.DbClient.Database("db").Collection("users")
@@ -43,17 +48,9 @@ func (s *Service) AddMeeting(w http.ResponseWriter, r *http.Request) {
 	for _, invite := range meeting.Invited {
 		logins = append(logins, invite.Invitee)
 	}
-	filter := bson.D{{"login", bson.D{{"$in", logins}}}}
-	count, err := s.DbClient.Database("db").Collection("users").CountDocuments(context.TODO(), filter)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if !s.checkUsersExist(logins, w) {
 		return
 	}
-	if count != int64(len(logins)) {
-		http.Error(w, fmt.Sprintf("invalid owner or invitees %v/%v", count, len(logins)), http.StatusBadRequest)
-		return
-	}
-
 	meeting.StartTime = meeting.StartTime.Truncate(60 * time.Second)
 	res, err := s.DbClient.Database("db").Collection("meetings").InsertOne(context.TODO(), meeting)
 	if err != nil {
@@ -87,12 +84,12 @@ func (s *Service) GetMeeting(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) ListMeetings(w http.ResponseWriter, r *http.Request) {
 	login := mux.Vars(r)["login"]
-	startTime, err := time.Parse("2006-01-02T15:04:05Z07:00", mux.Vars(r)["startTime"])
+	startTime, err := time.Parse(dateLayout, mux.Vars(r)["startTime"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	endTime, err := time.Parse("2006-01-02T15:04:05Z07:00", mux.Vars(r)["endTime"])
+	endTime, err := time.Parse(dateLayout, mux.Vars(r)["endTime"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -110,19 +107,62 @@ func (s *Service) ListMeetings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) FindSlot(w http.ResponseWriter, r *http.Request) {
-	login := mux.Vars(r)["login"]
-	meetings := []Meeting{}
-	filter := bson.D{{"invited.invitee", login}}
-	cursor, err := s.DbClient.Database("db").Collection("meetings").Find(context.TODO(), filter)
+	duration, err := strconv.Atoi(mux.Vars(r)["durationMinutes"])
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err = cursor.All(context.TODO(), &meetings); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	logins := strings.Split(mux.Vars(r)["logins"], ",")
+	if !s.checkUsersExist(logins, w) {
 		return
 	}
-	json.NewEncoder(w).Encode(meetings)
+	startTime, err := time.Parse(dateLayout, mux.Vars(r)["startTime"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var result time.Time
+	windowEndTime := startTime
+	i := 0
+	maxAttempts := 100
+out:
+	for ; i < maxAttempts; i++ {
+		windowStartTime := windowEndTime
+		windowEndTime = windowEndTime.Add(24 * time.Hour)
+		meetings, err := s.meetingsForUsers(logins, windowStartTime, windowEndTime) // todo: can retrieve less data from db
+		if err != nil {
+			http.Error(w, "no slot in 100 days", http.StatusInternalServerError)
+			return
+		}
+		if len(meetings) == 0 {
+			result = startTime
+			break
+		}
+		sort.Slice(meetings, func(i, j int) bool {
+			return meetings[i].StartTime.Before(meetings[j].StartTime)
+		})
+		prev := windowStartTime
+		for j := 0; j < len(meetings); j++ {
+			if prev.Before(meetings[j].StartTime) && meetings[j].StartTime.Sub(prev) >= time.Duration(duration)*time.Minute {
+				result = prev
+				break out
+			}
+			if prev.Before(meetings[j].EndTime) {
+				prev = meetings[j].EndTime
+			}
+		}
+		if prev.Before(windowEndTime) && windowEndTime.Sub(prev) >= time.Duration(duration)*time.Minute {
+			result = prev
+			break
+		}
+	}
+	if i == maxAttempts+1 {
+		http.Error(w, "no slot in 100 days", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"startTime": result.Format(dateLayout),
+	})
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -155,4 +195,18 @@ func (s *Service) meetingsForUsers(logins []string, startTime, endTime time.Time
 		return nil, err
 	}
 	return meetings, nil
+}
+
+func (s *Service) checkUsersExist(logins []string, w http.ResponseWriter) bool {
+	filter := bson.D{{"login", bson.D{{"$in", logins}}}}
+	count, err := s.DbClient.Database("db").Collection("users").CountDocuments(context.TODO(), filter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+	if count != int64(len(logins)) {
+		http.Error(w, fmt.Sprintf("invalid owner or invitees %v/%v", count, len(logins)), http.StatusBadRequest)
+		return false
+	}
+	return true
 }
