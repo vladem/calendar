@@ -1,0 +1,18 @@
+version: '3.3'
+services:
+  api:
+    image: 'local/api'
+    ports:
+      - '8080:8080'
+    depends_on:
+      - 'db'
+    volumes:
+      - './cmd/:/go/src/app/cmd'
+      - './service/:/go/src/app/service'
+  db:
+    image: 'mongo:latest'
+    container_name: 'db'
+    ports:
+      - '27017:27017'
+    volumes:
+      - './data:/data/db'
