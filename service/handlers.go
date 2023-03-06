@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +51,7 @@ func (s *Service) AddMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meeting.StartTime = meeting.StartTime.Truncate(60 * time.Second)
+	// todo: check that there is no intersection
 	res, err := s.DbClient.Database("db").Collection("meetings").InsertOne(context.TODO(), meeting)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -97,10 +97,19 @@ func (s *Service) ListMeetings(w http.ResponseWriter, r *http.Request) {
 	startTime = startTime.Truncate(60 * time.Second)
 	endTime = endTime.Truncate(60 * time.Second)
 
-	meetings, err := s.meetingsForUsers([]string{login}, startTime, endTime)
+	schedule, err := MakeSchedule(s.DbClient.Database("db").Collection("meetings"), []string{login}, &startTime, &endTime)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	meetings := []Meeting{}
+	for schedule.HasNext() {
+		meeting, err := schedule.Next()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		meetings = append(meetings, *meeting)
 	}
 	json.NewEncoder(w).Encode(meetings)
 	w.WriteHeader(http.StatusOK)
@@ -121,80 +130,29 @@ func (s *Service) FindSlot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	var result time.Time
-	windowEndTime := startTime
-	i := 0
-	maxAttempts := 100
-out:
-	for ; i < maxAttempts; i++ {
-		windowStartTime := windowEndTime
-		windowEndTime = windowEndTime.Add(24 * time.Hour)
-		meetings, err := s.meetingsForUsers(logins, windowStartTime, windowEndTime) // todo: can retrieve less data from db
-		if err != nil {
-			http.Error(w, "no slot in 100 days", http.StatusInternalServerError)
-			return
-		}
-		if len(meetings) == 0 {
-			result = startTime
-			break
-		}
-		sort.Slice(meetings, func(i, j int) bool {
-			return meetings[i].StartTime.Before(meetings[j].StartTime)
-		})
-		prev := windowStartTime
-		for j := 0; j < len(meetings); j++ {
-			if prev.Before(meetings[j].StartTime) && meetings[j].StartTime.Sub(prev) >= time.Duration(duration)*time.Minute {
-				result = prev
-				break out
-			}
-			if prev.Before(meetings[j].EndTime) {
-				prev = meetings[j].EndTime
-			}
-		}
-		if prev.Before(windowEndTime) && windowEndTime.Sub(prev) >= time.Duration(duration)*time.Minute {
-			result = prev
-			break
-		}
-	}
-	if i == maxAttempts+1 {
-		http.Error(w, "no slot in 100 days", http.StatusInternalServerError)
+	schedule, err := MakeSchedule(s.DbClient.Database("db").Collection("meetings"), logins, &startTime, nil) // todo: can retrieve less data from db, use projection
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	prevMeetingEnd := startTime
+	for schedule.HasNext() {
+		meeting, err := schedule.Next()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if prevMeetingEnd.Before(meeting.StartTime) && meeting.StartTime.Sub(prevMeetingEnd) >= time.Duration(duration)*time.Minute {
+			break
+		}
+		if prevMeetingEnd.Before(meeting.EndTime) {
+			prevMeetingEnd = meeting.EndTime
+		}
+	}
 	json.NewEncoder(w).Encode(map[string]string{
-		"startTime": result.Format(dateLayout),
+		"startTime": prevMeetingEnd.Format(dateLayout),
 	})
 	w.WriteHeader(http.StatusOK)
-}
-
-func (s *Service) meetingsForUsers(logins []string, startTime, endTime time.Time) ([]Meeting, error) {
-	meetings := []Meeting{}
-	filter := bson.D{
-		{"$and",
-			bson.A{
-				bson.D{{"$or", bson.A{
-					bson.D{{"owner", bson.D{{"$in", logins}}}},
-					bson.D{{"invited.invitee", bson.D{{"$in", logins}}}},
-				}}},
-				bson.D{{"$or", bson.A{
-					bson.D{{"$and", bson.A{
-						bson.D{{"startTime", bson.D{{"$gte", startTime}}}},
-						bson.D{{"startTime", bson.D{{"$lt", endTime}}}},
-					}}},
-					bson.D{{"$and", bson.A{
-						bson.D{{"endTime", bson.D{{"$gt", startTime}}}},
-						bson.D{{"endTime", bson.D{{"$lte", endTime}}}},
-					}}},
-				}}},
-			}},
-	}
-	cursor, err := s.DbClient.Database("db").Collection("meetings").Find(context.TODO(), filter)
-	if err != nil {
-		return nil, err
-	}
-	if err = cursor.All(context.TODO(), &meetings); err != nil {
-		return nil, err
-	}
-	return meetings, nil
 }
 
 func (s *Service) checkUsersExist(logins []string, w http.ResponseWriter) bool {

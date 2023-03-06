@@ -5,20 +5,20 @@ import "time"
 type AcceptedChoice uint8
 
 var (
-	ANone    AcceptedChoice = 0
-	Accepted AcceptedChoice = 1
-	Declined AcceptedChoice = 2
+	NotReviewed AcceptedChoice = 0
+	Accepted    AcceptedChoice = 1
+	Declined    AcceptedChoice = 2
 )
 
 type ReoccureanceChoice uint8
 
 var (
-	RNone       AcceptedChoice     = 0
-	Daily       ReoccureanceChoice = 0
-	WorkingDays ReoccureanceChoice = 1
-	Weekly      ReoccureanceChoice = 2
-	Monthly     ReoccureanceChoice = 3
-	Yearly      ReoccureanceChoice = 4
+	NoReoccurence ReoccureanceChoice = 0
+	Daily         ReoccureanceChoice = 1
+	WorkingDays   ReoccureanceChoice = 2
+	Weekly        ReoccureanceChoice = 3
+	Monthly       ReoccureanceChoice = 4
+	Yearly        ReoccureanceChoice = 5
 )
 
 type Invitation struct {
