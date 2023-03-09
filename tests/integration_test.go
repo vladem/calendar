@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/vladem/calendar/service"
@@ -19,6 +20,7 @@ var (
 
 func TestMain(m *testing.M) {
 	dbClient, setupError = service.ConnectDb()
+	time.Sleep(time.Second) // let app start serving
 	os.Exit(m.Run())
 }
 
@@ -65,6 +67,9 @@ func TestListMeetings(t *testing.T) {
 	meetings, err = client.ListMeetings("bob", "2023-03-08T16:00:00.000Z", "2023-03-08T16:30:00.000Z")
 	require.Empty(t, err)
 	require.Equal(t, 1, len(meetings))
+	meetings, err = client.ListMeetings("bob", "2023-03-08T15:00:00.000Z", "2023-03-08T16:00:00.000Z")
+	require.Empty(t, err)
+	require.Equal(t, 0, len(meetings))
 }
 
 func TestFindSlot(t *testing.T) {

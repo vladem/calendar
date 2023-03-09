@@ -24,7 +24,6 @@ func MakeSchedule(coll *mongo.Collection, logins []string, startTime, endTime *t
 		bson.D{{"owner", bson.D{{"$in", logins}}}},
 		bson.D{{"invited.invitee", bson.D{{"$in", logins}}}},
 	}}}
-	meetingsQueue := PriorityQueue{}
 	cursor, err := coll.Find(context.TODO(), bson.D{
 		{"$and",
 			bson.A{
@@ -33,11 +32,16 @@ func MakeSchedule(coll *mongo.Collection, logins []string, startTime, endTime *t
 				bson.D{{"reoccurance", bson.D{{"$ne", NoReoccurence}}}},
 			}},
 	})
-	if err = cursor.All(context.TODO(), &meetingsQueue); err != nil {
+	reoccuringMeetings := []*Meeting{}
+	if err = cursor.All(context.TODO(), &reoccuringMeetings); err != nil {
 		return nil, err
 	}
-	for i := 0; i < len(meetingsQueue); i++ {
-		meetingsQueue[i] = meetingsQueue[i].NextOccurence(startTime)
+	meetingsQueue := PriorityQueue{}
+	for _, meeting := range reoccuringMeetings {
+		reoccurance := meeting.NextOccurence(startTime)
+		if endTime == nil || reoccurance.StartTime.Before(*endTime) {
+			meetingsQueue = append(meetingsQueue, reoccurance)
+		}
 	}
 	heap.Init(&meetingsQueue)
 	opts := options.Find().SetSort(bson.D{{"startTime", 1}})
@@ -147,7 +151,7 @@ func (m *Meeting) NextOccurence(startingFrom *time.Time) *Meeting {
 				0,
 				0,
 				time.UTC)
-			if next.StartTime.Before(*startingFrom) {
+			if next.EndTime.Before(*startingFrom) {
 				next.StartTime = next.StartTime.Add(24 * time.Hour)
 				next.EndTime = next.EndTime.Add(24 * time.Hour)
 			}
