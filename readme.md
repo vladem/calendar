@@ -34,5 +34,9 @@ curl 'http://127.0.0.1:8080/api/users/alice/meetings?startTime=2023-03-08T16:00:
 curl 'http://127.0.0.1:8080/api/findSlot?startTime=2023-03-07T15:50:00.000Z&durationMinutes=30&logins=bob,alice'
 curl 'http://127.0.0.1:8080/api/findSlot?startTime=2023-03-07T15:51:00.000Z&durationMinutes=30&logins=bob,alice'
 
+
+# accept/decline invitation
+curl -X POST http://127.0.0.1:8080/api/acceptMeeting -d '{"meetingId": "640a4862377457548608f50a", "decline": true, "login": "alice"}' -H "Content-Type: application/json"
+
 make clean
 ```

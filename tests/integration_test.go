@@ -88,3 +88,28 @@ func TestFindSlot(t *testing.T) {
 	require.Empty(t, err)
 	require.Equal(t, "2023-03-07T17:30:00Z", slotStartTime)
 }
+
+func TestAcceptMeeting(t *testing.T) {
+	cleanup(t)
+	require.Empty(t, client.PostUser("bob"))
+	require.Empty(t, client.PostUser("alice"))
+	require.Empty(t, client.PostUser("carl"))
+	meeting := &service.Meeting{
+		Owner:       "bob",
+		Invited:     []service.Invitation{{Invitee: "alice"}, {Invitee: "carl"}},
+		StartTime:   parseTimeNoError(t, "2023-03-07T16:20:00.000Z"),
+		EndTime:     parseTimeNoError(t, "2023-03-07T16:40:00.000Z"),
+		Reoccurance: 1,
+	}
+	meetingId1, err := client.PostMeeting(*meeting)
+	require.Empty(t, err)
+	meetingId2, err := client.PostMeeting(*meeting)
+	require.Empty(t, err)
+	meeting, err = client.AcceptMeeting(meetingId1, "alice" /* decline = */, false)
+	require.Empty(t, err)
+	require.Equal(t, meeting.Invited[0].Accepted, service.Accepted)
+	require.Equal(t, meeting.Invited[1].Accepted, service.NotReviewed)
+	meeting, err = client.GetMeeting(meetingId2)
+	require.Equal(t, meeting.Invited[0].Accepted, service.NotReviewed)
+	require.Equal(t, meeting.Invited[1].Accepted, service.NotReviewed)
+}

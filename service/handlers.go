@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var dateLayout = "2006-01-02T15:04:05Z07:00"
@@ -160,6 +161,37 @@ func (s *Service) FindSlot(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"startTime": prevMeetingEnd.Format(dateLayout),
 	})
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Service) AcceptMeeting(w http.ResponseWriter, r *http.Request) {
+	var reqest AcceptMeetingRequest
+	err := json.NewDecoder(r.Body).Decode(&reqest)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	objectId, err := primitive.ObjectIDFromHex(reqest.MeetingId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	choice := Accepted
+	if reqest.Decline {
+		choice = Declined
+	}
+	identifier := []interface{}{bson.D{{"elem.invitee", reqest.Login}}}
+	update := bson.D{{"$set", bson.D{{"invited.$[elem].accepted", choice}}}}
+	opts := options.FindOneAndUpdate().
+		SetArrayFilters(options.ArrayFilters{Filters: identifier}).
+		SetReturnDocument(options.After)
+	var meeting Meeting
+	err = s.DbClient.Database("db").Collection("meetings").FindOneAndUpdate(context.TODO(), bson.D{{"_id", objectId}}, update, opts).Decode(&meeting)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(meeting)
 	w.WriteHeader(http.StatusOK)
 }
 

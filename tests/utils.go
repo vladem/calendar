@@ -107,6 +107,56 @@ func (c *CalendarClient) FindSlot(logins []string, startTime string, durationMin
 	return slot["startTime"], nil
 }
 
+func (c *CalendarClient) AcceptMeeting(meetingId, login string, decline bool) (*service.Meeting, error) {
+	uri := c.Endpoint + "/api/acceptMeeting"
+	reqBody, _ := json.Marshal(&service.AcceptMeetingRequest{
+		MeetingId: meetingId,
+		Login:     login,
+		Decline:   decline,
+	})
+	request, err := http.NewRequest("POST", uri, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, fmt.Errorf("AcceptMeeting, bad response %v %v", response.Status, body)
+	}
+	meeting := service.Meeting{}
+	err = json.NewDecoder(response.Body).Decode(&meeting)
+	if err != nil {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, fmt.Errorf("AcceptMeeting, bad response %s %s", response.Status, body)
+	}
+	return &meeting, nil
+}
+
+func (c *CalendarClient) GetMeeting(meetingId string) (*service.Meeting, error) {
+	uri := c.Endpoint + "/api/meetings/" + meetingId
+	response, err := http.Get(uri)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 200 {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, fmt.Errorf("GetMeeting, bad response %v %v", response.Status, body)
+	}
+	meeting := service.Meeting{}
+	err = json.NewDecoder(response.Body).Decode(&meeting)
+	if err != nil {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, fmt.Errorf("GetMeeting, bad response %s %s", response.Status, body)
+	}
+	return &meeting, nil
+}
+
 func (c *CalendarClient) Ping() error {
 	_, err := http.Get(c.Endpoint)
 	return err

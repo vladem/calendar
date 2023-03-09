@@ -40,3 +40,9 @@ type User struct {
 	Id    string `json:"id,omitempty" bson:"_id,omitempty"`
 	Login string `json:"login" bson:"login"` // todo: unique index
 }
+
+type AcceptMeetingRequest struct {
+	MeetingId string `json:"meetingId"`
+	Login     string `json:"login"`
+	Decline   bool   `json:"decline"`
+}

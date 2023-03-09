@@ -2,7 +2,7 @@ build:
 	docker build . -t local/api
 
 run:
-	docker-compose up
+	docker-compose up api
 
 clean:
 	rm -rf data/ && docker-compose down
