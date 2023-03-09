@@ -6,3 +6,6 @@ run:
 
 clean:
 	rm -rf data/
+
+test:
+	docker-compose up test

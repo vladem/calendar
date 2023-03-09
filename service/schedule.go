@@ -8,6 +8,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Schedule struct {
@@ -39,6 +40,7 @@ func MakeSchedule(coll *mongo.Collection, logins []string, startTime, endTime *t
 		meetingsQueue[i] = meetingsQueue[i].NextOccurence(startTime)
 	}
 	heap.Init(&meetingsQueue)
+	opts := options.Find().SetSort(bson.D{{"startTime", 1}})
 	if endTime != nil {
 		cursor, err = coll.Find(context.TODO(), bson.D{
 			{"$and",
@@ -55,7 +57,7 @@ func MakeSchedule(coll *mongo.Collection, logins []string, startTime, endTime *t
 						}}},
 					}}},
 				}},
-		})
+		}, opts)
 	} else {
 		cursor, err = coll.Find(context.TODO(), bson.D{
 			{"$and",
@@ -70,7 +72,7 @@ func MakeSchedule(coll *mongo.Collection, logins []string, startTime, endTime *t
 						}}},
 					}}},
 				}},
-		})
+		}, opts)
 	}
 	if err != nil {
 		return nil, err
@@ -100,10 +102,6 @@ func (s *Schedule) Next() (*Meeting, error) {
 	}
 	if s.nextInCursor == nil || (len(s.meetingsQueue) != 0 && s.meetingsQueue[0].StartTime.Before(s.nextInCursor.StartTime)) {
 		nextMeeting := heap.Pop(&s.meetingsQueue).(*Meeting)
-		log.Printf("nextMeeting: %v", nextMeeting.StartTime)
-		if s.endTime != nil {
-			log.Printf("endTime: %v", *s.endTime)
-		}
 		nextOccurance := nextMeeting.NextOccurence(nil)
 		if s.endTime == nil || nextOccurance.StartTime.Before(*s.endTime) {
 			heap.Push(&s.meetingsQueue, nextOccurance)
@@ -112,7 +110,10 @@ func (s *Schedule) Next() (*Meeting, error) {
 	}
 	nextMeeting := s.nextInCursor
 	if s.nextInCursor.Reoccurance != NoReoccurence {
-		heap.Push(&s.meetingsQueue, s.nextInCursor.NextOccurence(nil))
+		nextOccurance := s.nextInCursor.NextOccurence(nil)
+		if s.endTime == nil || nextOccurance.StartTime.Before(*s.endTime) {
+			heap.Push(&s.meetingsQueue, nextOccurance)
+		}
 	}
 	s.nextInCursor = nil
 	return nextMeeting, nil

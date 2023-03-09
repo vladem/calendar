@@ -16,3 +16,16 @@ services:
       - '27017:27017'
     volumes:
       - './data:/data/db'
+  test:
+    image: 'local/api'
+    command:
+      - go
+      - test
+      - '-v'
+      - './tests'
+    depends_on:
+      - 'api'
+    volumes:
+      - './cmd/:/go/src/app/cmd'
+      - './service/:/go/src/app/service'
+      - './tests/:/go/src/app/tests'

@@ -8,9 +8,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Service struct {
@@ -23,19 +21,11 @@ func (s *Service) ServeHttp() error {
 	if s.Server != nil {
 		return errors.New("already serving")
 	}
-	uri := "mongodb://db:27017/"
-	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	var err error
-	s.DbClient, err = mongo.Connect(context.TODO(), options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI))
+	s.DbClient, err = ConnectDb()
 	if err != nil {
 		return err
 	}
-	var result bson.M
-	if err := s.DbClient.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Decode(&result); err != nil {
-		return err
-	}
-	log.Println("Pinged your deployment. You successfully connected to MongoDB!")
-
 	r := mux.NewRouter()
 	r.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
 		s.AddUser(w, r)

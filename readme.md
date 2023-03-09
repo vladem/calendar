@@ -1,5 +1,10 @@
 # Calendar
 
+## Test
+```
+make test
+```
+
 ## Usage
 ```
 make build
