@@ -107,6 +107,11 @@ func (c *CalendarClient) FindSlot(logins []string, startTime string, durationMin
 	return slot["startTime"], nil
 }
 
+func (c *CalendarClient) Ping() error {
+	_, err := http.Get(c.Endpoint)
+	return err
+}
+
 func parseTimeNoError(t *testing.T, timestr string) time.Time {
 	dateLayout := "2006-01-02T15:04:05Z07:00"
 	res, err := time.Parse(dateLayout, timestr)

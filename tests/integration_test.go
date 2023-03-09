@@ -16,11 +16,15 @@ var (
 	url        = "http://api:8080"
 	dbClient   *mongo.Client
 	setupError error
+	client     *CalendarClient
 )
 
 func TestMain(m *testing.M) {
 	dbClient, setupError = service.ConnectDb()
-	time.Sleep(time.Second) // let app start serving
+	client = &CalendarClient{url}
+	for i := 0; i < 10 && client.Ping() != nil; i++ {
+		time.Sleep(time.Second)
+	}
 	os.Exit(m.Run())
 }
 
@@ -33,7 +37,7 @@ func cleanup(t *testing.T) {
 	require.Empty(t, err)
 }
 
-func createMeetings(t *testing.T, client *CalendarClient) {
+func createMeetings(t *testing.T) {
 	require.Empty(t, client.PostUser("bob"))
 	require.Empty(t, client.PostUser("alice"))
 	meeting := service.Meeting{
@@ -59,8 +63,7 @@ func createMeetings(t *testing.T, client *CalendarClient) {
 
 func TestListMeetings(t *testing.T) {
 	cleanup(t)
-	client := &CalendarClient{url}
-	createMeetings(t, client)
+	createMeetings(t)
 	meetings, err := client.ListMeetings("alice", "2023-03-07T16:00:00.000Z", "2023-03-07T19:00:00.000Z")
 	require.Empty(t, err)
 	require.Equal(t, 2, len(meetings))
@@ -74,8 +77,7 @@ func TestListMeetings(t *testing.T) {
 
 func TestFindSlot(t *testing.T) {
 	cleanup(t)
-	client := &CalendarClient{url}
-	createMeetings(t, client)
+	createMeetings(t)
 	slotStartTime, err := client.FindSlot([]string{"alice", "bob"}, "2023-03-08T16:00:00.000Z", 30)
 	require.Empty(t, err)
 	require.Equal(t, "2023-03-08T16:40:00Z", slotStartTime)

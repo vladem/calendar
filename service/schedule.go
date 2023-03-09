@@ -123,6 +123,18 @@ func (s *Schedule) Next() (*Meeting, error) {
 	return nextMeeting, nil
 }
 
+func switchDay(orig time.Time, daySrc time.Time) time.Time {
+	return time.Date(
+		daySrc.Year(),
+		daySrc.Month(),
+		daySrc.Day(),
+		orig.Hour(),
+		orig.Minute(),
+		0,
+		0,
+		time.UTC)
+}
+
 func (m *Meeting) NextOccurence(startingFrom *time.Time) *Meeting {
 	switch m.Reoccurance {
 	case Daily:
@@ -132,25 +144,12 @@ func (m *Meeting) NextOccurence(startingFrom *time.Time) *Meeting {
 			next.StartTime = next.StartTime.Add(24 * time.Hour)
 			next.EndTime = next.EndTime.Add(24 * time.Hour)
 		} else {
-			// todo: meeting can start and end in different days
-			next.StartTime = time.Date(
-				startingFrom.Year(),
-				startingFrom.Month(),
-				startingFrom.Day(),
-				next.StartTime.Hour(),
-				next.StartTime.Minute(),
-				0,
-				0,
-				time.UTC)
-			next.EndTime = time.Date(
-				startingFrom.Year(),
-				startingFrom.Month(),
-				startingFrom.Day(),
-				next.EndTime.Hour(),
-				next.EndTime.Minute(),
-				0,
-				0,
-				time.UTC)
+			next.StartTime = switchDay(next.StartTime, *startingFrom)
+			newEndDay := *startingFrom
+			if next.StartTime.Day() != next.EndTime.Day() {
+				newEndDay.Add(24 * time.Hour)
+			}
+			next.EndTime = switchDay(next.EndTime, newEndDay)
 			if next.EndTime.Before(*startingFrom) {
 				next.StartTime = next.StartTime.Add(24 * time.Hour)
 				next.EndTime = next.EndTime.Add(24 * time.Hour)

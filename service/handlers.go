@@ -43,6 +43,14 @@ func (s *Service) AddMeeting(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !meeting.EndTime.After(meeting.StartTime) || meeting.EndTime.Sub(meeting.StartTime) > 24*time.Hour {
+		http.Error(w, "bad dates", http.StatusBadRequest)
+		return
+	}
+	if meeting.Reoccurance != 0 && meeting.Reoccurance != 1 && meeting.Reoccurance != 3 {
+		http.Error(w, "supported reoccurances: 0 - None, 1 - Daily", http.StatusBadRequest)
+		return
+	}
 	logins := []string{meeting.Owner}
 	for _, invite := range meeting.Invited {
 		logins = append(logins, invite.Invitee)
